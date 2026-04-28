@@ -1,0 +1,59 @@
+{
+  "url": "http://localhost:5174",
+  "timestamp": "2026-04-27T15:47:48.038Z",
+  "results": [
+    {
+      "check": "accessibility",
+      "issues": [
+        {
+          "type": "label",
+          "severity": "critical",
+          "selector": "input[type=\"text\"]",
+          "description": "Form elements must have labels",
+          "evidence": "Element does not have an implicit or explicit <label>, aria-label, aria-labelledby, title, or placeholder attribute",
+          "check": "accessibility"
+        },
+        {
+          "type": "landmark-one-main",
+          "severity": "warning",
+          "selector": "html",
+          "description": "Document should have one main landmark",
+          "evidence": "Document does not have a main landmark",
+          "check": "accessibility"
+        }
+      ],
+      "duration": 1968
+    },
+    {
+      "check": "layout",
+      "issues": [],
+      "duration": 10
+    },
+    {
+      "check": "visual",
+      "issues": [
+        {
+          "type": "visual-issue",
+          "severity": "warning",
+          "selector": ".card-title",
+          "description": "Card titles have inconsistent font sizes across the page",
+          "evidence": "viewport=desktop state=fullpage",
+          "check": "visual",
+          "deviation": "Design spec section 3.2: All card titles should use 18px semibold"
+        }
+      ],
+      "duration": 3200
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "critical": 1,
+    "warning": 2,
+    "info": 0,
+    "byCheck": {
+      "accessibility": 2,
+      "layout": 0,
+      "visual": 1
+    }
+  }
+}
