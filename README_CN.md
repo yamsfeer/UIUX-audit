@@ -65,6 +65,7 @@ uiux-audit <url> [选项]
 | `--no-a11y` | 跳过可访问性检查 | — |
 | `--no-layout` | 跳过布局检查 | — |
 | `--pages <url列表>` | 额外的页面 URL，逗号分隔 | — |
+| `--journey <路径>` | 审计前执行的旅程文件（YAML 或 JS），用于登录/初始化 | — |
 
 ### 环境变量
 
@@ -116,6 +117,13 @@ uiux-audit http://localhost:5173 --visual \
 uiux-audit http://localhost:5173 --pages /about,/contact,/settings
 ```
 
+**审计需要登录的页面（旅程）：**
+```bash
+uiux-audit http://localhost:5173 --journey ./login-journey.yaml
+```
+
+详见下方 [旅程](#旅程) 章节。
+
 ## 检测内容
 
 ### 可访问性（axe-core）
@@ -163,6 +171,88 @@ uiux-audit 专为与 AI 编程 Agent 协作循环而设计：
 5. 循环直到 `critical` 和 `warning` 数量为零
 
 JSON 输出为机器解析而设计——Agent 可以遍历 `results[].issues[]`，用 `selector` 定位源码，用 `fixSuggestion` 应用修复。
+
+## 旅程
+
+旅程文件用于在审计前自动化登录和初始化步骤。适用于需要认证或特定状态的页面。
+
+### YAML 旅程
+
+创建包含步骤的 YAML 文件：
+
+```yaml
+name: Standard login
+steps:
+  - goto: ${BASE_URL}/login
+  - fill:
+      selector: input[type="text"]
+      value: ${LOGIN_EMAIL}
+  - fill:
+      selector: input[type="password"]
+      value: ${LOGIN_PASSWORD}
+  - click: button[type="submit"]
+  - waitFor: body
+  - wait: 1000
+```
+
+运行：
+```bash
+uiux-audit http://localhost:5173 --journey ./login-journey.yaml
+```
+
+### 支持的步骤
+
+| 步骤 | 说明 |
+|---|---|
+| `goto: <url>` | 导航到 URL（`${BASE_URL}` 解析为审计目标地址） |
+| `fill: { selector, value }` | 填充输入框 |
+| `click: <selector>` | 点击元素 |
+| `press: <key>` | 按下键盘按键（如 `Enter`、`Escape`） |
+| `select: { selector, value }` | 选择 `<select>` 中的选项 |
+| `check: <selector>` | 勾选复选框 |
+| `uncheck: <selector>` | 取消勾选复选框 |
+| `wait: <毫秒>` | 等待指定毫秒数 |
+| `waitFor: <selector>` 或 `{ selector, timeout? }` | 等待元素出现 |
+| `waitForNavigation: <url>` | 等待导航到指定 URL |
+| `assert: { selector?, url?, title? }` | 断言元素存在、当前 URL 或页面标题 |
+| `screenshot: <文件名>` | 截图（保存到输出目录） |
+
+`${LOGIN_EMAIL}` 等环境变量会从进程环境中替换。
+
+### JS 旅程
+
+对于更复杂的流程，使用 JavaScript 文件：
+
+```js
+export default async function ({ page, resolveUrl, baseUrl }) {
+  await page.goto(resolveUrl('/login'));
+  await page.fill('input[type="text"]', process.env.LOGIN_EMAIL);
+  await page.fill('input[type="password"]', process.env.LOGIN_PASSWORD);
+  await page.click('button[type="submit"]');
+  await page.waitForURL('**/dashboard');
+
+  // 返回登录后要审计的路径
+  return ['/dashboard', '/settings'];
+}
+```
+
+会话状态（cookies、localStorage）在旅程和审计之间保持一致。
+
+## CJK 字体支持
+
+Playwright 自带的 Chromium 在没有安装 CJK（中日韩）字体的系统上会将字符渲染为空白方框。修复方法：
+
+**Debian/Ubuntu：**
+```bash
+sudo apt install fonts-noto-cjk
+```
+
+**RHEL/CentOS/OpenCloudOS：**
+```bash
+sudo dnf install google-noto-sans-cjk-sc-fonts google-noto-sans-mono-cjk-sc-fonts
+```
+
+本工具在所有浏览器上下文中设置了 `locale: 'zh-CN'`，以确保 Chromium 正确选择 CJK 字体。
 
 ## 视觉模型 API
 

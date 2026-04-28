@@ -65,6 +65,7 @@ uiux-audit <url> [options]
 | `--no-a11y` | Skip accessibility checks | — |
 | `--no-layout` | Skip layout checks | — |
 | `--pages <urls>` | Additional page URLs to audit (comma-separated) | — |
+| `--journey <path>` | Path to a journey file (YAML or JS) for login/setup before auditing | — |
 
 ### Environment Variables
 
@@ -116,6 +117,13 @@ uiux-audit http://localhost:5173 --visual \
 uiux-audit http://localhost:5173 --pages /about,/contact,/settings
 ```
 
+**Audit a page that requires login (journey):**
+```bash
+uiux-audit http://localhost:5173 --journey ./login-journey.yaml
+```
+
+See [Journey](#journey) below for details.
+
 ## What It Detects
 
 ### Accessibility (axe-core)
@@ -163,6 +171,88 @@ uiux-audit is designed to work in a loop with AI coding agents:
 5. Repeat until `critical` and `warning` counts are zero
 
 The JSON output is structured for machine parsing — agents can iterate over `results[].issues[]` and use `selector` to find the source code and `fixSuggestion` to apply fixes.
+
+## Journey
+
+Journey files automate login and setup steps before auditing. Useful when the target page requires authentication or specific state.
+
+### YAML Journey
+
+Create a YAML file with steps:
+
+```yaml
+name: Standard login
+steps:
+  - goto: ${BASE_URL}/login
+  - fill:
+      selector: input[type="text"]
+      value: ${LOGIN_EMAIL}
+  - fill:
+      selector: input[type="password"]
+      value: ${LOGIN_PASSWORD}
+  - click: button[type="submit"]
+  - waitFor: body
+  - wait: 1000
+```
+
+Run with:
+```bash
+uiux-audit http://localhost:5173 --journey ./login-journey.yaml
+```
+
+### Supported Steps
+
+| Step | Description |
+|---|---|
+| `goto: <url>` | Navigate to a URL (`${BASE_URL}` resolves to the audit target) |
+| `fill: { selector, value }` | Fill an input field |
+| `click: <selector>` | Click an element |
+| `press: <key>` | Press a keyboard key (e.g. `Enter`, `Escape`) |
+| `select: { selector, value }` | Select an option in a `<select>` |
+| `check: <selector>` | Check a checkbox |
+| `uncheck: <selector>` | Uncheck a checkbox |
+| `wait: <ms>` | Wait for a duration in milliseconds |
+| `waitFor: <selector>` or `{ selector, timeout? }` | Wait for an element to appear |
+| `waitForNavigation: <url>` | Wait for navigation to a URL |
+| `assert: { selector?, url?, title? }` | Assert element existence, current URL, or page title |
+| `screenshot: <filename>` | Take a screenshot (saved to output directory) |
+
+Environment variables like `${LOGIN_EMAIL}` are substituted from the process environment.
+
+### JS Journey
+
+For more complex flows, use a JavaScript file:
+
+```js
+export default async function ({ page, resolveUrl, baseUrl }) {
+  await page.goto(resolveUrl('/login'));
+  await page.fill('input[type="text"]', process.env.LOGIN_EMAIL);
+  await page.fill('input[type="password"]', process.env.LOGIN_PASSWORD);
+  await page.click('button[type="submit"]');
+  await page.waitForURL('**/dashboard');
+
+  // Return paths to audit after login
+  return ['/dashboard', '/settings'];
+}
+```
+
+The session state (cookies, localStorage) is preserved across the journey and the audit.
+
+## CJK Font Support
+
+Playwright's bundled Chromium may render CJK (Chinese, Japanese, Korean) characters as empty boxes on systems without CJK fonts installed. To fix this:
+
+**Debian/Ubuntu:**
+```bash
+sudo apt install fonts-noto-cjk
+```
+
+**RHEL/CentOS/OpenCloudOS:**
+```bash
+sudo dnf install google-noto-sans-cjk-sc-fonts google-noto-sans-mono-cjk-sc-fonts
+```
+
+The tool sets `locale: 'zh-CN'` on all browser contexts to ensure Chromium selects CJK fonts correctly.
 
 ## Vision Model API
 
