@@ -1,5 +1,7 @@
 import { Page, Browser } from 'playwright';
 import { ViewportConfig, ScreenshotInfo } from '../checks/types.js';
+import { StorageState } from '../journey/types.js';
+import { resolveUrl } from '../config.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -15,7 +17,8 @@ export async function captureScreenshots(
   url: string,
   viewports: ViewportConfig[],
   extraPages?: string[],
-  outputDir?: string
+  outputDir?: string,
+  storageState?: StorageState
 ): Promise<ScreenshotResult> {
   let dir: string;
   let persistent: boolean;
@@ -32,13 +35,17 @@ export async function captureScreenshots(
   const screenshots: ScreenshotInfo[] = [];
   const allUrls = [url, ...(extraPages || [])];
 
-  const context = await browser.newContext();
+  const context = await browser.newContext({
+    locale: 'zh-CN',
+    storageState: storageState || undefined,
+  });
   const page = await context.newPage();
 
   for (const pageUrl of allUrls) {
+    const resolvedUrl = resolveUrl(url, pageUrl);
     for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto(pageUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      await page.goto(resolvedUrl, { waitUntil: 'networkidle', timeout: 30000 });
       await page.waitForTimeout(500);
 
       // Viewport screenshot

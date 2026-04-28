@@ -1,11 +1,13 @@
 import { chromium, Browser } from 'playwright';
 import { AuditConfig, CheckResult } from './checks/types.js';
+import { StorageState } from './journey/types.js';
 import { runAccessibilityCheck } from './checks/accessibility.js';
 import { runLayoutCheck } from './checks/layout.js';
 import { captureScreenshots, cleanupScreenshots } from './visual/screenshot.js';
 import { runVisualReview } from './visual/reviewer.js';
 import { loadDesignSpec } from './visual/design-spec.js';
 import { buildReport, formatJson, formatMarkdown, formatTable } from './report/formatter.js';
+import { runJourney } from './journey/runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -33,9 +35,38 @@ export async function runAudit(config: AuditConfig): Promise<void> {
   try {
     browser = await chromium.launch({ headless: true });
     const results: CheckResult[] = [];
+    let storageState: StorageState | undefined;
+    let auditPages = config.pages;
+
+    // Run journey if provided
+    if (config.journey) {
+      try {
+        const journeyResult = await runJourney(
+          browser,
+          config.journey,
+          config.url,
+          config.viewports[0],
+        );
+        storageState = journeyResult.storageState;
+        if (journeyResult.auditPages) {
+          const existing = new Set(auditPages ?? []);
+          const merged = [...(auditPages ?? [])];
+          for (const p of journeyResult.auditPages) {
+            if (!existing.has(p)) {
+              merged.push(p);
+            }
+          }
+          auditPages = merged;
+        }
+      } catch (err) {
+        console.error(`Journey failed: ${err instanceof Error ? err.message : err}`);
+        console.error('Cannot proceed with audit — session state is invalid.');
+        process.exit(1);
+      }
+    }
 
     // Programmatic checks - reuse one page
-    const context = await browser.newContext();
+    const context = await browser.newContext({ locale: 'zh-CN', storageState: storageState || undefined });
     const page = await context.newPage();
     await page.setViewportSize({ width: config.viewports[0].width, height: config.viewports[0].height });
     await page.goto(config.url, { waitUntil: 'networkidle', timeout: 30000 });
@@ -70,8 +101,9 @@ export async function runAudit(config: AuditConfig): Promise<void> {
         browser,
         config.url,
         config.viewports,
-        config.pages,
-        screenshotDir
+        auditPages,
+        screenshotDir,
+        storageState
       );
 
       console.log(`Captured ${screenshots.length} screenshots, running visual review...`);

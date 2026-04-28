@@ -20,6 +20,7 @@ export function createConfig(options: Partial<AuditConfig> & { url: string }): A
     outputFile: options.outputFile,
     outputDir: options.outputDir,
     timestamp: options.timestamp ?? true,
+    journey: options.journey,
   };
 }
 
@@ -29,4 +30,12 @@ export function parseViewports(input: string): ViewportConfig[] {
     if (!match) throw new Error(`Invalid viewport format: ${spec}. Use WxH (e.g. 1440x900)`);
     return { width: parseInt(match[1]), height: parseInt(match[2]), name: `viewport-${i}` };
   });
+}
+
+export function resolveUrl(base: string, target: string): string {
+  if (target.startsWith('http://') || target.startsWith('https://')) {
+    return target;
+  }
+  const origin = new URL(base).origin;
+  return origin + (target.startsWith('/') ? target : '/' + target);
 }

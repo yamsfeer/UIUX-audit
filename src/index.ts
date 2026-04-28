@@ -36,6 +36,7 @@ program
   .option('--no-a11y', 'Skip accessibility checks')
   .option('--no-layout', 'Skip layout checks')
   .option('--pages <urls>', 'Additional page URLs to audit (comma-separated)')
+  .option('--journey <path>', 'Path to a journey file (YAML or JS) for login/setup before auditing')
   .addHelpText('after', `
 Examples:
   $ uiux-audit http://localhost:5173
@@ -98,6 +99,7 @@ AI Agent workflow:
         outputFile: options.outputFile,
         outputDir: options.outputDir,
         timestamp: options.timestamp ?? true,
+        journey: options.journey,
       });
 
       await runAudit(config);

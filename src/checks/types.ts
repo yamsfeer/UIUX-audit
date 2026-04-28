@@ -60,4 +60,5 @@ export interface AuditConfig {
   outputFile?: string;
   outputDir?: string;
   timestamp: boolean;
+  journey?: string;
 }

@@ -1,0 +1,12 @@
+name: Standard login
+steps:
+  - goto: ${BASE_URL}/login
+  - fill:
+      selector: input[type="text"]
+      value: ${LOGIN_EMAIL}
+  - fill:
+      selector: input[type="password"]
+      value: ${LOGIN_PASSWORD}
+  - click: button[type="submit"]
+  - waitFor: body
+  - wait: 1000
