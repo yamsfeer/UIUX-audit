@@ -96,14 +96,17 @@ export async function runAudit(config: AuditConfig): Promise<void> {
       }
     }
 
+    // Resolve output directory early so explorer and report share the same timestamped subdir
+    const outDir = await resolveOutputDir(config);
+    let savedScreenshotDir: string | undefined;
+
     // Run explorer if enabled
     if (config.explore) {
       try {
-        const exploreOutputDir = config.outputDir || process.cwd();
         explorationResult = await runExplorer({
           ...config,
           storageState,
-        }, browser, exploreOutputDir);
+        }, browser, outDir);
 
         // Merge discovered pages into audit scope
         const discoveredUrls = explorationResult.pageStates.map(ps => ps.url);
@@ -199,10 +202,6 @@ export async function runAudit(config: AuditConfig): Promise<void> {
         (explorationResult as ExplorationResult & { stateIssues?: Record<string, number> }).stateIssues = stateIssues;
       }
     }
-
-    // Resolve output directory before visual review (screenshots need it)
-    const outDir = await resolveOutputDir(config);
-    let savedScreenshotDir: string | undefined;
 
     // Visual review
     if (config.visual) {

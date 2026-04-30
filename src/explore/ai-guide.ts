@@ -30,9 +30,11 @@ export class AIGuide {
     candidates: InteractionCandidate[],
     history: ExplorationStats,
     budget: Budget,
+    visitedUrls: string[] = [],
+    sameLayoutCount = 0,
   ): Promise<RankedInteraction[]> {
     try {
-      const { system, user } = buildPrioritizationPrompt(candidates, budget);
+      const { system, user } = buildPrioritizationPrompt(candidates, budget, visitedUrls, sameLayoutCount);
 
       const screenshot = await page.screenshot({ type: 'jpeg', quality: 50 });
       const base64 = screenshot.toString('base64');

@@ -35,6 +35,7 @@ export interface PageState {
   description: string;
   interactions: Interaction[];
   domHash: string;
+  layoutHash: string;
   screenshot?: string;
 }
 
@@ -49,6 +50,8 @@ export interface ExplorationConfig {
   avoidForms: boolean;
   aiGuided: boolean;
   exploreModel?: string;
+  /** Max pages with the same layout structure (different content, same skeleton). Default: 2 */
+  maxSameLayout: number;
 }
 
 export const DEFAULT_EXPLORATION_CONFIG: ExplorationConfig = {
@@ -62,6 +65,7 @@ export const DEFAULT_EXPLORATION_CONFIG: ExplorationConfig = {
   avoidForms: false,
   aiGuided: true,
   exploreModel: undefined,
+  maxSameLayout: 2,
 };
 
 export interface ExplorationResult {

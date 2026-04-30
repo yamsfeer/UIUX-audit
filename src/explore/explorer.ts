@@ -14,7 +14,7 @@ import {
   Budget,
 } from './types.js';
 import { extractLinks, extractInteractions, extractPageMetadata } from './dom-extractor.js';
-import { computeDomHash, computeStateId, StateRegistry } from './dedup.js';
+import { computeDomHash, computeLayoutHash, computeStateId, StateRegistry, LayoutRegistry } from './dedup.js';
 import { buildSiteMap } from './site-map.js';
 import { AIGuide } from './ai-guide.js';
 
@@ -58,6 +58,7 @@ export class Explorer {
     const results: PageState[] = [];
     const queue: ExplorationTarget[] = [{ type: 'navigate', url: startUrl, depth: 0 }];
     const visitedUrls = new Set<string>();
+    const layoutRegistry = new LayoutRegistry(this.config.maxSameLayout);
 
     while (queue.length > 0) {
       const elapsed = Date.now() - startTime;
@@ -87,6 +88,7 @@ export class Explorer {
 
         // Capture state after navigation (and optional interaction)
         const domHash = await computeDomHash(page);
+        const layoutHash = await computeLayoutHash(page);
         const currentUrl = page.url();
         const stateId = computeStateId(currentUrl, domHash);
 
@@ -101,10 +103,19 @@ export class Explorer {
         if (!visitedUrls.has(currentUrl)) {
           visitedUrls.add(currentUrl);
           stats.pagesDiscovered++;
+
+          // Track layout and skip if we've seen this layout too many times
+          if (target.type === 'navigate' && target.depth > 0) {
+            if (layoutRegistry.shouldSkip(layoutHash)) {
+              await context.close();
+              continue;
+            }
+          }
+          layoutRegistry.record(layoutHash);
         }
 
         const metadata = await extractPageMetadata(page);
-        const pageState = await this.capturePageState(page, stateId, domHash, target, metadata);
+        const pageState = await this.capturePageState(page, stateId, domHash, layoutHash, target, metadata);
         results.push(pageState);
 
         // AI completion check
@@ -136,15 +147,19 @@ export class Explorer {
         const budget = this.getBudget(stats, startTime);
 
         if (this.aiGuide && this.config.aiGuided && candidates.length > 0) {
-          const ranked = await this.aiGuide.prioritize(page, candidates, stats, budget);
+          const sameLayoutCount = layoutRegistry.getCount(layoutHash);
+          const ranked = await this.aiGuide.prioritize(
+            page, candidates, stats, budget,
+            Array.from(visitedUrls), sameLayoutCount,
+          );
           stats.aiDecisionsMade++;
           candidates = ranked
             .map(r => candidates.find(c => c.selector === r.selector))
             .filter((c): c is InteractionCandidate => c !== undefined)
-            .slice(0, 5);
+            .slice(0, 8);
         } else {
           candidates.sort((a, b) => b.priority - a.priority);
-          candidates = candidates.slice(0, 10);
+          candidates = candidates.slice(0, 12);
         }
 
         for (const candidate of candidates) {
@@ -232,6 +247,7 @@ export class Explorer {
     page: Page,
     stateId: string,
     domHash: string,
+    layoutHash: string,
     target: ExplorationTarget,
     metadata: { title: string; description: string; h1: string },
   ): Promise<PageState> {
@@ -257,6 +273,7 @@ export class Explorer {
       description,
       interactions,
       domHash,
+      layoutHash,
       screenshot,
     };
   }

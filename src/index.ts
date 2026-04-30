@@ -124,6 +124,7 @@ AI Agent workflow:
           aiGuided: options.exploreAi !== false,
           exploreModel: options.exploreModel,
           avoidForms: options.avoidForms ?? false,
+          maxSameLayout: 2,
         } : undefined,
         exploreOutput: options.exploreOutput,
         exploreJourney: options.exploreJourney,

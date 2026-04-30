@@ -89,6 +89,7 @@ export function exportSiteMapJson(result: ExplorationResult): object {
       description: ps.description,
       interactions: ps.interactions,
       domHash: ps.domHash,
+      layoutHash: ps.layoutHash,
     })),
     siteMap: serializeSiteMapNode(result.siteMap),
   };
