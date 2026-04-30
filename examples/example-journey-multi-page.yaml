@@ -1,0 +1,41 @@
+# Example: Multi-page journey with assertions
+# Usage: uiux-audit http://localhost:5173 --journey examples/example-journey-multi-page.yaml
+#
+# This journey navigates through several pages, interacts with elements,
+# and asserts expected states before the audit begins.
+
+name: Browse and interact
+viewport: 1440x900
+steps:
+  - goto: /
+  - waitFor: body
+  - wait: 500
+
+  # Open a navigation menu
+  - click: button[aria-label="Menu"]
+  - wait: 300
+
+  # Navigate to a sub-page
+  - click: a[href="/about"]
+  - waitForNavigation: /about
+  - assert:
+      url: /about
+      title: About
+
+  # Fill and submit a contact form
+  - goto: /contact
+  - fill:
+      selector: input[name="name"]
+      value: Test User
+  - fill:
+      selector: input[name="email"]
+      value: test@example.com
+  - fill:
+      selector: textarea[name="message"]
+      value: Hello from audit
+  - click: button[type="submit"]
+  - waitFor: .success-message
+  - wait: 500
+
+  # Take a screenshot of the result
+  - screenshot: contact-submitted

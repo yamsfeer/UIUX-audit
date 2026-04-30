@@ -70,7 +70,7 @@ async function reviewBatch(
   let apiUrl: string;
   if (baseUrl.endsWith('/chat/completions')) {
     apiUrl = baseUrl;
-  } else if (baseUrl.endsWith('/v1')) {
+  } else if (/\/v\d+$/.test(baseUrl)) {
     apiUrl = `${baseUrl}/chat/completions`;
   } else {
     apiUrl = `${baseUrl}/v1/chat/completions`;

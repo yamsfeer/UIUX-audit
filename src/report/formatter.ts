@@ -1,6 +1,6 @@
 import { AuditReport, CheckResult, Issue, Severity } from '../checks/types.js';
 
-export function buildReport(url: string, results: CheckResult[]): AuditReport {
+export function buildReport(url: string, results: CheckResult[], exploration?: AuditReport['exploration']): AuditReport {
   const allIssues = results.flatMap((r) => r.issues);
   return {
     url,
@@ -17,6 +17,7 @@ export function buildReport(url: string, results: CheckResult[]): AuditReport {
         visual: allIssues.filter((i) => i.check === 'visual').length,
       },
     },
+    exploration,
   };
 }
 
@@ -36,6 +37,34 @@ export function formatMarkdown(report: AuditReport): string {
     `  - Info: ${report.summary.info}`,
     ``,
   ];
+
+  if (report.exploration) {
+    lines.push(`## Exploration`);
+    lines.push('');
+    lines.push(`- Pages discovered: ${report.exploration.pagesDiscovered}`);
+    lines.push(`- States discovered: ${report.exploration.statesDiscovered}`);
+    lines.push(`- Interactions attempted: ${report.exploration.interactionsAttempted}`);
+    if (report.exploration.aiDecisionsMade > 0) {
+      lines.push(`- AI decisions: ${report.exploration.aiDecisionsMade}`);
+    }
+    lines.push(`- Duration: ${(report.exploration.durationMs / 1000).toFixed(1)}s`);
+    const stateIssueEntries = Object.entries(report.exploration.stateIssues || {});
+    if (stateIssueEntries.length > 0) {
+      lines.push('');
+      lines.push(`Issues by state:`);
+      for (const [stateId, count] of stateIssueEntries) {
+        lines.push(`- \`${stateId}\`: ${count} issues`);
+      }
+    }
+    if (report.exploration.screenshots && report.exploration.screenshots.length > 0) {
+      lines.push('');
+      lines.push(`Screenshots:`);
+      for (const shot of report.exploration.screenshots) {
+        lines.push(`- ${shot.description} (\`${shot.stateId}\`): ${shot.path}`);
+      }
+    }
+    lines.push('');
+  }
 
   for (const result of report.results) {
     if (result.issues.length === 0) continue;
@@ -99,6 +128,14 @@ export function formatTable(report: AuditReport): string {
   }
 
   lines.push('');
+  if (report.exploration) {
+    const shotCount = report.exploration.screenshots?.length ?? 0;
+    lines.push(`Exploration: ${report.exploration.pagesDiscovered} pages, ${report.exploration.statesDiscovered} states, ${report.exploration.interactionsAttempted} interactions`);
+    if (shotCount > 0) {
+      lines.push(`Explore screenshots: ${shotCount} saved`);
+    }
+    lines.push('');
+  }
   if (report.results.some(r => r.issues.length > 0)) {
     lines.push('Run with --output json or --output markdown for detailed evidence and selectors.');
   }
@@ -116,8 +153,9 @@ function severityBadge(severity: Severity): string {
   return map[severity];
 }
 
-function pad(s: string, len: number): string {
-  return s.length >= len ? s.slice(0, len - 1) + '…' : s.padEnd(len);
+function pad(s: string | undefined, len: number): string {
+  const str = s || '';
+  return str.length >= len ? str.slice(0, len - 1) + '…' : str.padEnd(len);
 }
 
 function truncate(s: string, max: number): string {

@@ -1,10 +1,17 @@
 import { Page, Browser } from 'playwright';
 import { ViewportConfig, ScreenshotInfo } from '../checks/types.js';
 import { StorageState } from '../journey/types.js';
+import { Interaction } from '../explore/types.js';
 import { resolveUrl } from '../config.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
+
+export interface ScreenshotTarget {
+  url: string;
+  label: string;
+  interactions?: Interaction[];
+}
 
 export interface ScreenshotResult {
   screenshots: ScreenshotInfo[];
@@ -18,7 +25,8 @@ export async function captureScreenshots(
   viewports: ViewportConfig[],
   extraPages?: string[],
   outputDir?: string,
-  storageState?: StorageState
+  storageState?: StorageState,
+  screenshotTargets?: ScreenshotTarget[],
 ): Promise<ScreenshotResult> {
   let dir: string;
   let persistent: boolean;
@@ -64,6 +72,31 @@ export async function captureScreenshots(
     }
   }
 
+  // Screenshot explored page states
+  if (screenshotTargets && screenshotTargets.length > 0) {
+    for (const target of screenshotTargets) {
+      const resolvedUrl = resolveUrl(url, target.url);
+      for (const viewport of viewports) {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await page.goto(resolvedUrl, { waitUntil: 'networkidle', timeout: 30000 });
+        await page.waitForTimeout(500);
+
+        if (target.interactions && target.interactions.length > 0) {
+          await replayInteractions(page, target.interactions);
+        }
+
+        const stateName = safeName(target.label || target.url);
+        const viewportFile = path.join(dir, `${stateName}-${viewport.name}-explored-viewport.png`);
+        await page.screenshot({ path: viewportFile });
+        screenshots.push({ pageUrl: target.url, viewport, state: `explored-${target.label}`, path: viewportFile });
+
+        const fullPageFile = path.join(dir, `${stateName}-${viewport.name}-explored-fullpage.png`);
+        await page.screenshot({ path: fullPageFile, fullPage: true });
+        screenshots.push({ pageUrl: target.url, viewport, state: `explored-${target.label}-full`, path: fullPageFile });
+      }
+    }
+  }
+
   await context.close();
   return { screenshots, tempDir: dir, persistent };
 }
@@ -106,6 +139,33 @@ async function captureOverlayStates(
 export async function cleanupScreenshots(tempDir: string, persistent = false): Promise<void> {
   if (persistent) return;
   await fs.rm(tempDir, { recursive: true, force: true });
+}
+
+async function replayInteractions(page: Page, interactions: Interaction[]): Promise<void> {
+  for (const interaction of interactions) {
+    try {
+      switch (interaction.type) {
+        case 'navigate':
+          await page.goto(interaction.selector, { waitUntil: 'networkidle', timeout: 15000 });
+          break;
+        case 'click':
+        case 'toggle-state':
+          await page.click(interaction.selector, { timeout: 5000 });
+          break;
+        case 'fill-input':
+          if (interaction.value) {
+            await page.fill(interaction.selector, interaction.value, { timeout: 5000 });
+          }
+          break;
+        case 'submit-form':
+          await page.click(interaction.selector, { timeout: 5000 });
+          break;
+      }
+      await page.waitForTimeout(300);
+    } catch {
+      // Skip failed interactions
+    }
+  }
 }
 
 function safeName(url: string): string {

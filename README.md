@@ -17,29 +17,70 @@ The audit runs in two layers:
 ## Installation
 
 ```bash
-git clone <repo-url> uiux-audit
-cd uiux-audit
-npm install
+# Global install (recommended)
+npm install -g uiux-audit
 npx playwright install chromium
-npm run build
+
+# Or run on-demand without installing
+npx uiux-audit --help
+```
+
+## Configuration
+
+uiux-audit uses a layered configuration system. Higher-priority sources override lower ones:
+
+| Priority | Source | Use case |
+|---|---|---|
+| 1 (highest) | CLI flags (`--model-url`, `--model-name`) | One-off overrides |
+| 2 | Environment variables (`UIUX_AUDIT_*`) | Production / CI / NPM global install |
+| 3 | `.env` file in working directory | Local development |
+| 4 (lowest) | Built-in defaults (火山引擎 Ark + Doubao-Seed-2.0-pro) | Zero-config usage |
+
+### API Key
+
+**The API key must always be provided via environment variable — never on the command line.** Command-line arguments are visible in `ps aux` and shell history.
+
+```bash
+# Development: create a .env file in your project
+echo 'UIUX_AUDIT_MODEL_KEY=your-key' > .env
+
+# Production / CI: export the environment variable
+export UIUX_AUDIT_MODEL_KEY=your-key
+
+# One-off: inline environment variable
+UIUX_AUDIT_MODEL_KEY=your-key uiux-audit http://localhost:5173 --visual
+```
+
+### Default Model
+
+By default, uiux-audit uses **豆包 (Doubao-Seed-2.0-pro)** from 火山引擎 Ark. To use a different model:
+
+```bash
+# Via CLI flags
+uiux-audit http://localhost:5173 --visual --model-url https://api.openai.com --model-name gpt-4o
+
+# Via environment variables
+export UIUX_AUDIT_MODEL_URL=https://api.openai.com
+export UIUX_AUDIT_MODEL_NAME=gpt-4o
 ```
 
 ## Quick Start
 
 ```bash
-# Run accessibility + layout checks on a local site
-node dist/index.js http://localhost:5173
+# Run accessibility + layout checks on a local site (no config needed)
+uiux-audit http://localhost:5173
+
+# Or with npx (no install)
+npx uiux-audit http://localhost:5173
 
 # Save report as JSON
-node dist/index.js http://localhost:5173 --output json --output-file report.json
+uiux-audit http://localhost:5173 --output json --output-file report.json
 
 # Save report and screenshots to a directory
-node dist/index.js http://localhost:5173 --output json --output-dir ./audit-results
+uiux-audit http://localhost:5173 --output json --output-dir ./audit-results
 
-# Enable visual review (requires a vision model API)
-node dist/index.js http://localhost:5173 --visual \
-  --model-url https://api.openai.com \
-  --model-key sk-xxx
+# Enable visual review (set API key via environment variable or .env)
+UIUX_AUDIT_MODEL_KEY=your-key uiux-audit http://localhost:5173 --visual
 ```
 
 ## Usage
@@ -54,9 +95,8 @@ uiux-audit <url> [options]
 |---|---|---|
 | `--visual` | Enable visual review layer using a vision model | off |
 | `--design-spec <path>` | UI/UX design spec document (Markdown) for compliance review | — |
-| `--model-url <url>` | Vision model API base URL | `UIUX_AUDIT_MODEL_URL` env |
-| `--model-key <key>` | Vision model API key | `UIUX_AUDIT_MODEL_KEY` env |
-| `--model-name <name>` | Vision model name | `gpt-4o` |
+| `--model-url <url>` | Vision model API base URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
+| `--model-name <name>` | Vision model name | `Doubao-Seed-2.0-pro` |
 | `--viewport <sizes>` | Viewport sizes as `WxH`, comma-separated | `1440x900` |
 | `--output <format>` | Output format: `json`, `markdown`, `table` | `table` |
 | `--output-file <path>` | Write report to file instead of stdout | — |
@@ -69,11 +109,11 @@ uiux-audit <url> [options]
 
 ### Environment Variables
 
-| Variable | Description |
-|---|---|
-| `UIUX_AUDIT_MODEL_URL` | Vision model API base URL |
-| `UIUX_AUDIT_MODEL_KEY` | Vision model API key |
-| `UIUX_AUDIT_MODEL_NAME` | Vision model name (default: `gpt-4o`) |
+| Variable | Required | Description |
+|---|---|---|
+| `UIUX_AUDIT_MODEL_KEY` | Yes (for `--visual`) | Vision model API key. **Never** pass via CLI. |
+| `UIUX_AUDIT_MODEL_URL` | No | Vision model API base URL (default: `https://ark.cn-beijing.volces.com/api/coding/v3`) |
+| `UIUX_AUDIT_MODEL_NAME` | No | Vision model name (default: `Doubao-Seed-2.0-pro`) |
 
 ### Examples
 
@@ -98,18 +138,22 @@ uiux-audit http://localhost:5173 --viewport 1440x900,375x812
 
 **Full audit with visual review:**
 ```bash
-uiux-audit http://localhost:5173 --visual \
-  --model-url https://api.openai.com \
-  --model-key sk-xxx \
+# Set key via environment variable, then run
+UIUX_AUDIT_MODEL_KEY=your-key uiux-audit http://localhost:5173 --visual \
   --output json --output-file /tmp/ux-report.json
 ```
 
 **Design compliance check:**
 ```bash
-uiux-audit http://localhost:5173 --visual \
-  --design-spec ./docs/UIUX.md \
+UIUX_AUDIT_MODEL_KEY=your-key uiux-audit http://localhost:5173 --visual \
+  --design-spec ./docs/UIUX.md
+```
+
+**Using a different model provider:**
+```bash
+UIUX_AUDIT_MODEL_KEY=sk-xxx uiux-audit http://localhost:5173 --visual \
   --model-url https://api.openai.com \
-  --model-key sk-xxx
+  --model-name gpt-4o
 ```
 
 **Audit multiple pages:**
@@ -256,11 +300,14 @@ The tool sets `locale: 'zh-CN'` on all browser contexts to ensure Chromium selec
 
 ## Vision Model API
 
-Uses the OpenAI-compatible `/v1/chat/completions` endpoint. Works with any compatible service:
+Uses the OpenAI-compatible `/v1/chat/completions` endpoint. Works with any service that exposes this API:
 
+- **Default**: 火山引擎 Ark (Doubao-Seed-2.0-pro) — zero config beyond API key
 - OpenAI (gpt-4o, gpt-4o-mini)
 - Azure OpenAI
-- Any service with an OpenAI-compatible API
+- Any other OpenAI-compatible provider
+
+To use a different provider, set `UIUX_AUDIT_MODEL_URL` and `UIUX_AUDIT_MODEL_NAME`.
 
 ## License
 

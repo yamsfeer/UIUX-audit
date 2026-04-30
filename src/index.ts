@@ -25,9 +25,8 @@ program
   .argument('<url>', 'URL of the website to audit (e.g. http://localhost:5173)')
   .option('--visual', 'Enable visual review layer using a vision model (default: off)', false)
   .option('--design-spec <path>', 'Path to a UI/UX design spec (Markdown) for compliance review')
-  .option('--model-url <url>', 'Vision model API base URL (or set UIUX_AUDIT_MODEL_URL env)')
-  .option('--model-key <key>', 'Vision model API key (or set UIUX_AUDIT_MODEL_KEY env)')
-  .option('--model-name <name>', 'Vision model name (default: gpt-4o)', 'gpt-4o')
+  .option('--model-url <url>', 'Vision model API base URL (default: https://ark.cn-beijing.volces.com/api/coding/v3)')
+  .option('--model-name <name>', 'Vision model name (default: Doubao-Seed-2.0-pro)', 'Doubao-Seed-2.0-pro')
   .option('--viewport <sizes>', 'Viewport sizes as WxH, comma-separated (default: 1440x900)', '1440x900')
   .option('--output <format>', 'Output format: json, markdown, table (default: table)', 'table')
   .option('--output-file <path>', 'Write report to a file instead of stdout')
@@ -37,6 +36,19 @@ program
   .option('--no-layout', 'Skip layout checks')
   .option('--pages <urls>', 'Additional page URLs to audit (comma-separated)')
   .option('--journey <path>', 'Path to a journey file (YAML or JS) for login/setup before auditing')
+  .option('--explore', 'Enable autonomous site exploration to discover pages and states')
+  .option('--no-explore-ai', 'Disable AI guidance for exploration (DOM-only mode, no API cost)')
+  .option('--max-pages <n>', 'Max pages to discover during exploration (default: 30)', parseInt)
+  .option('--max-states <n>', 'Max states to discover during exploration (default: 50)', parseInt)
+  .option('--max-depth <n>', 'Max link depth for exploration (default: 5)', parseInt)
+  .option('--max-interactions <n>', 'Max interactions to attempt during exploration (default: 200)', parseInt)
+  .option('--explore-timeout <ms>', 'Exploration timeout in milliseconds (default: 300000)', parseInt)
+  .option('--explore-model <name>', 'Model name for AI-guided exploration (default: same as --model-name)')
+  .option('--explore-output <path>', 'Save exploration map as JSON')
+  .option('--explore-journey <path>', 'Export exploration results as a Journey YAML file')
+  .option('--avoid-forms', 'Skip form interactions during exploration')
+  .option('--explore-visual', 'Send explored page screenshots to visual review (requires --visual)')
+  .option('--max-visual-pages <n>', 'Max explored pages to send to visual review (default: 10)', parseInt)
   .addHelpText('after', `
 Examples:
   $ uiux-audit http://localhost:5173
@@ -54,24 +66,25 @@ Examples:
   $ uiux-audit http://localhost:5173 --viewport 1440x900,375x812
     Check at desktop and mobile viewports
 
-  $ uiux-audit http://localhost:5173 --visual \\
-      --model-url https://api.openai.com \\
-      --model-key sk-xxx
-    Enable visual review with a vision model
+  $ uiux-audit http://localhost:5173 --visual
+    Enable visual review (uses default model from 火山引擎 Ark)
+
+  $ UIUX_AUDIT_MODEL_KEY=your-key uiux-audit http://localhost:5173 --visual
+    Pass API key via environment variable
 
   $ uiux-audit http://localhost:5173 --visual \\
       --design-spec ./docs/UIUX.md \\
       --model-url https://api.openai.com \\
-      --model-key sk-xxx
-    Check implementation against a design spec document
+      --model-name gpt-4o
+    Override model URL and name; set API key via UIUX_AUDIT_MODEL_KEY env var
 
   $ uiux-audit http://localhost:5173 --pages /about,/contact
     Audit multiple pages
 
 Environment variables:
-  UIUX_AUDIT_MODEL_URL    Vision model API base URL
-  UIUX_AUDIT_MODEL_KEY    Vision model API key
-  UIUX_AUDIT_MODEL_NAME   Vision model name (default: gpt-4o)
+  UIUX_AUDIT_MODEL_KEY    Vision model API key (required for --visual; never pass on command line)
+  UIUX_AUDIT_MODEL_URL    Vision model API base URL (default: https://ark.cn-beijing.volces.com/api/coding/v3)
+  UIUX_AUDIT_MODEL_NAME   Vision model name (default: Doubao-Seed-2.0-pro)
 
 AI Agent workflow:
   1. Start dev server
@@ -93,13 +106,29 @@ AI Agent workflow:
         visual: options.visual ?? false,
         designSpec: options.designSpec,
         modelUrl: options.modelUrl,
-        modelKey: options.modelKey,
         modelName: options.modelName,
         output: options.output,
         outputFile: options.outputFile,
         outputDir: options.outputDir,
         timestamp: options.timestamp ?? true,
         journey: options.journey,
+        explore: options.explore ?? false,
+        exploreConfig: options.explore ? {
+          maxPages: options.maxPages,
+          maxStates: options.maxStates,
+          maxDepth: options.maxDepth,
+          maxInteractions: options.maxInteractions,
+          timeoutMs: options.exploreTimeout,
+          stayOnOrigin: true,
+          avoidDestructive: true,
+          aiGuided: options.exploreAi !== false,
+          exploreModel: options.exploreModel,
+          avoidForms: options.avoidForms ?? false,
+        } : undefined,
+        exploreOutput: options.exploreOutput,
+        exploreJourney: options.exploreJourney,
+        exploreVisual: options.exploreVisual ?? false,
+        maxVisualPages: options.maxVisualPages,
       });
 
       await runAudit(config);

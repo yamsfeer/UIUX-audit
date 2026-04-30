@@ -17,29 +17,70 @@
 ## 安装
 
 ```bash
-git clone <repo-url> uiux-audit
-cd uiux-audit
-npm install
+# 全局安装（推荐）
+npm install -g uiux-audit
 npx playwright install chromium
-npm run build
+
+# 或者不安装，直接通过 npx 运行
+npx uiux-audit --help
+```
+
+## 配置
+
+uiux-audit 使用分层配置系统，高优先级覆盖低优先级：
+
+| 优先级 | 来源 | 适用场景 |
+|---|---|---|
+| 1（最高） | CLI 参数（`--model-url`、`--model-name`） | 一次性覆盖 |
+| 2 | 环境变量（`UIUX_AUDIT_*`） | 生产环境 / CI / NPM 全局安装 |
+| 3 | 工作目录下的 `.env` 文件 | 本地开发 |
+| 4（最低） | 内置默认值（火山引擎 Ark + Doubao-Seed-2.0-pro） | 零配置开箱即用 |
+
+### API 密钥
+
+**API 密钥必须通过环境变量传入——永远不要放在命令行上。** 命令行参数在 `ps aux` 和 shell 历史记录中可见。
+
+```bash
+# 本地开发：在项目中创建 .env 文件
+echo 'UIUX_AUDIT_MODEL_KEY=你的密钥' > .env
+
+# 生产 / CI：导出环境变量
+export UIUX_AUDIT_MODEL_KEY=你的密钥
+
+# 一次性使用：内联环境变量
+UIUX_AUDIT_MODEL_KEY=你的密钥 uiux-audit http://localhost:5173 --visual
+```
+
+### 默认模型
+
+默认使用火山引擎 Ark 的**豆包（Doubao-Seed-2.0-pro）**模型。如需使用其他模型：
+
+```bash
+# 通过 CLI 参数
+uiux-audit http://localhost:5173 --visual --model-url https://api.openai.com --model-name gpt-4o
+
+# 通过环境变量
+export UIUX_AUDIT_MODEL_URL=https://api.openai.com
+export UIUX_AUDIT_MODEL_NAME=gpt-4o
 ```
 
 ## 快速开始
 
 ```bash
-# 对本地网站运行可访问性 + 布局检查
-node dist/index.js http://localhost:5173
+# 对本地网站运行可访问性 + 布局检查（无需配置）
+uiux-audit http://localhost:5173
+
+# 或者通过 npx（无需安装）
+npx uiux-audit http://localhost:5173
 
 # 将报告保存为 JSON
-node dist/index.js http://localhost:5173 --output json --output-file report.json
+uiux-audit http://localhost:5173 --output json --output-file report.json
 
 # 保存报告和截图到目录
-node dist/index.js http://localhost:5173 --output json --output-dir ./audit-results
+uiux-audit http://localhost:5173 --output json --output-dir ./audit-results
 
-# 启用视觉审查（需要视觉模型 API）
-node dist/index.js http://localhost:5173 --visual \
-  --model-url https://api.openai.com \
-  --model-key sk-xxx
+# 启用视觉审查（通过环境变量或 .env 设置 API 密钥）
+UIUX_AUDIT_MODEL_KEY=你的密钥 uiux-audit http://localhost:5173 --visual
 ```
 
 ## 使用方法
@@ -54,9 +95,8 @@ uiux-audit <url> [选项]
 |---|---|---|
 | `--visual` | 启用视觉审查层 | 关闭 |
 | `--design-spec <路径>` | UI/UX 设计文档（Markdown），用于设计符合性审查 | — |
-| `--model-url <url>` | 视觉模型 API 地址 | `UIUX_AUDIT_MODEL_URL` 环境变量 |
-| `--model-key <key>` | 视觉模型 API 密钥 | `UIUX_AUDIT_MODEL_KEY` 环境变量 |
-| `--model-name <名称>` | 视觉模型名称 | `gpt-4o` |
+| `--model-url <url>` | 视觉模型 API 地址 | `https://ark.cn-beijing.volces.com/api/coding/v3` |
+| `--model-name <名称>` | 视觉模型名称 | `Doubao-Seed-2.0-pro` |
 | `--viewport <尺寸>` | 视口尺寸，格式 `WxH`，逗号分隔 | `1440x900` |
 | `--output <格式>` | 输出格式：`json`、`markdown`、`table` | `table` |
 | `--output-file <路径>` | 输出到文件而非终端 | — |
@@ -69,11 +109,11 @@ uiux-audit <url> [选项]
 
 ### 环境变量
 
-| 变量 | 说明 |
-|---|---|
-| `UIUX_AUDIT_MODEL_URL` | 视觉模型 API 地址 |
-| `UIUX_AUDIT_MODEL_KEY` | 视觉模型 API 密钥 |
-| `UIUX_AUDIT_MODEL_NAME` | 视觉模型名称（默认 `gpt-4o`） |
+| 变量 | 是否必需 | 说明 |
+|---|---|---|
+| `UIUX_AUDIT_MODEL_KEY` | 是（`--visual` 时） | 视觉模型 API 密钥。**切勿**通过 CLI 传入。 |
+| `UIUX_AUDIT_MODEL_URL` | 否 | 视觉模型 API 地址（默认 `https://ark.cn-beijing.volces.com/api/coding/v3`） |
+| `UIUX_AUDIT_MODEL_NAME` | 否 | 视觉模型名称（默认 `Doubao-Seed-2.0-pro`） |
 
 ### 示例
 
@@ -98,18 +138,22 @@ uiux-audit http://localhost:5173 --viewport 1440x900,375x812
 
 **完整审计含视觉审查：**
 ```bash
-uiux-audit http://localhost:5173 --visual \
-  --model-url https://api.openai.com \
-  --model-key sk-xxx \
+# 先设置环境变量，再运行
+UIUX_AUDIT_MODEL_KEY=你的密钥 uiux-audit http://localhost:5173 --visual \
   --output json --output-file /tmp/ux-report.json
 ```
 
 **设计符合性检查：**
 ```bash
-uiux-audit http://localhost:5173 --visual \
-  --design-spec ./docs/UIUX.md \
+UIUX_AUDIT_MODEL_KEY=你的密钥 uiux-audit http://localhost:5173 --visual \
+  --design-spec ./docs/UIUX.md
+```
+
+**使用其他模型供应商：**
+```bash
+UIUX_AUDIT_MODEL_KEY=sk-xxx uiux-audit http://localhost:5173 --visual \
   --model-url https://api.openai.com \
-  --model-key sk-xxx
+  --model-name gpt-4o
 ```
 
 **审计多个页面：**
@@ -256,11 +300,14 @@ sudo dnf install google-noto-sans-cjk-sc-fonts google-noto-sans-mono-cjk-sc-font
 
 ## 视觉模型 API
 
-使用 OpenAI 兼容的 `/v1/chat/completions` 接口。支持任何兼容服务：
+使用 OpenAI 兼容的 `/v1/chat/completions` 接口。支持任何提供此 API 的服务：
 
-- OpenAI（gpt-4o、gpt-4o-mini）
+- **默认**：火山引擎 Ark (Doubao-Seed-2.0-pro) — 仅需 API 密钥即可使用
+- OpenAI (gpt-4o、gpt-4o-mini)
 - Azure OpenAI
-- 任何提供 OpenAI 兼容 API 的服务
+- 其他任何 OpenAI 兼容的供应商
+
+如需使用不同供应商，设置 `UIUX_AUDIT_MODEL_URL` 和 `UIUX_AUDIT_MODEL_NAME` 即可。
 
 ## 许可证
 

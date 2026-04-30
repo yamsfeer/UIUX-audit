@@ -13,14 +13,20 @@ export function createConfig(options: Partial<AuditConfig> & { url: string }): A
     noLayout: options.noLayout ?? false,
     visual: options.visual ?? false,
     designSpec: options.designSpec,
-    modelUrl: options.modelUrl || process.env.UIUX_AUDIT_MODEL_URL,
-    modelKey: options.modelKey || process.env.UIUX_AUDIT_MODEL_KEY,
-    modelName: options.modelName || process.env.UIUX_AUDIT_MODEL_NAME || 'gpt-4o',
+    modelUrl: options.modelUrl || process.env.UIUX_AUDIT_MODEL_URL || 'https://ark.cn-beijing.volces.com/api/coding/v3',
+    modelKey: process.env.UIUX_AUDIT_MODEL_KEY,
+    modelName: options.modelName || process.env.UIUX_AUDIT_MODEL_NAME || 'Doubao-Seed-2.0-pro',
     output: options.output || 'table',
     outputFile: options.outputFile,
     outputDir: options.outputDir,
     timestamp: options.timestamp ?? true,
     journey: options.journey,
+    explore: options.explore ?? false,
+    exploreConfig: options.exploreConfig,
+    exploreOutput: options.exploreOutput,
+    exploreJourney: options.exploreJourney,
+    exploreVisual: options.exploreVisual ?? false,
+    maxVisualPages: options.maxVisualPages,
   };
 }
 

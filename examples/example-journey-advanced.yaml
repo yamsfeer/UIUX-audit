@@ -1,0 +1,19 @@
+# Example: Advanced journey with JS file
+# Usage: uiux-audit http://localhost:5173 --journey examples/example-journey-advanced.js
+#
+# YAML journeys cover simple sequential steps. For conditional logic,
+# loops, or dynamic data, use a JS journey file instead.
+
+# --- example-journey-advanced.js ---
+#
+# export default async function ({ page, resolveUrl, baseUrl }) {
+#   await page.goto(resolveUrl('/login'));
+#   await page.fill('input[name="email"]', process.env.LOGIN_EMAIL || 'admin@test.com');
+#   await page.fill('input[name="password"]', process.env.LOGIN_PASSWORD || 'password');
+#   await page.click('button[type="submit"]');
+#   await page.waitForURL('**/dashboard');
+#
+#   // Collect pages to audit
+#   const links = await page.$$eval('nav a', (els) => els.map((a) => a.href));
+#   return links; // These URLs will be added to the audit scope
+# }

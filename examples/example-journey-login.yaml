@@ -1,0 +1,18 @@
+# Example: Login journey
+# Usage: uiux-audit http://localhost:5173 --journey examples/example-journey-login.yaml
+#
+# This journey logs in before auditing, so authenticated pages are accessible.
+# Environment variables like ${LOGIN_EMAIL} are read from .env or the shell.
+
+name: Login flow
+steps:
+  - goto: /login
+  - fill:
+      selector: input[name="email"]
+      value: ${LOGIN_EMAIL}
+  - fill:
+      selector: input[name="password"]
+      value: ${LOGIN_PASSWORD}
+  - click: button[type="submit"]
+  - waitFor: body
+  - wait: 1000

@@ -30,6 +30,15 @@ export interface AuditReport {
     info: number;
     byCheck: Record<CheckSource, number>;
   };
+  exploration?: {
+    pagesDiscovered: number;
+    statesDiscovered: number;
+    interactionsAttempted: number;
+    aiDecisionsMade: number;
+    durationMs: number;
+    stateIssues: Record<string, number>;
+    screenshots: Array<{ stateId: string; description: string; path: string }>;
+  };
 }
 
 export interface ViewportConfig {
@@ -61,4 +70,10 @@ export interface AuditConfig {
   outputDir?: string;
   timestamp: boolean;
   journey?: string;
+  explore?: boolean;
+  exploreConfig?: import('../explore/types.js').ExplorationConfig;
+  exploreOutput?: string;
+  exploreJourney?: string;
+  exploreVisual?: boolean;
+  maxVisualPages?: number;
 }

@@ -3,11 +3,14 @@ import { AuditConfig, CheckResult } from './checks/types.js';
 import { StorageState } from './journey/types.js';
 import { runAccessibilityCheck } from './checks/accessibility.js';
 import { runLayoutCheck } from './checks/layout.js';
-import { captureScreenshots, cleanupScreenshots } from './visual/screenshot.js';
+import { captureScreenshots, cleanupScreenshots, ScreenshotTarget } from './visual/screenshot.js';
 import { runVisualReview } from './visual/reviewer.js';
 import { loadDesignSpec } from './visual/design-spec.js';
 import { buildReport, formatJson, formatMarkdown, formatTable } from './report/formatter.js';
 import { runJourney } from './journey/runner.js';
+import { runExplorer } from './explore/runner.js';
+import { exportSiteMapJson, generateJourneyYaml } from './explore/site-map.js';
+import { ExplorationResult, Interaction } from './explore/types.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -29,6 +32,33 @@ async function resolveOutputDir(config: AuditConfig): Promise<string | undefined
   return config.outputDir;
 }
 
+async function replayInteractions(page: import('playwright').Page, interactions: Interaction[]): Promise<void> {
+  for (const interaction of interactions) {
+    try {
+      switch (interaction.type) {
+        case 'navigate':
+          await page.goto(interaction.selector, { waitUntil: 'networkidle', timeout: 15000 });
+          break;
+        case 'click':
+        case 'toggle-state':
+          await page.click(interaction.selector, { timeout: 5000 });
+          break;
+        case 'fill-input':
+          if (interaction.value) {
+            await page.fill(interaction.selector, interaction.value, { timeout: 5000 });
+          }
+          break;
+        case 'submit-form':
+          await page.click(interaction.selector, { timeout: 5000 });
+          break;
+      }
+      await page.waitForTimeout(300);
+    } catch {
+      // Skip failed interactions
+    }
+  }
+}
+
 export async function runAudit(config: AuditConfig): Promise<void> {
   let browser: Browser | undefined;
 
@@ -37,6 +67,7 @@ export async function runAudit(config: AuditConfig): Promise<void> {
     const results: CheckResult[] = [];
     let storageState: StorageState | undefined;
     let auditPages = config.pages;
+    let explorationResult: ExplorationResult | undefined;
 
     // Run journey if provided
     if (config.journey) {
@@ -65,7 +96,48 @@ export async function runAudit(config: AuditConfig): Promise<void> {
       }
     }
 
-    // Programmatic checks - reuse one page
+    // Run explorer if enabled
+    if (config.explore) {
+      try {
+        const exploreOutputDir = config.outputDir || process.cwd();
+        explorationResult = await runExplorer({
+          ...config,
+          storageState,
+        }, browser, exploreOutputDir);
+
+        // Merge discovered pages into audit scope
+        const discoveredUrls = explorationResult.pageStates.map(ps => ps.url);
+        const existing = new Set(auditPages ?? []);
+        const merged = [...(auditPages ?? [])];
+        for (const p of discoveredUrls) {
+          if (!existing.has(p)) {
+            merged.push(p);
+          }
+        }
+        auditPages = merged;
+
+        // Save exploration map if requested
+        if (config.exploreOutput) {
+          await fs.writeFile(
+            config.exploreOutput,
+            JSON.stringify(exportSiteMapJson(explorationResult), null, 2),
+            'utf-8',
+          );
+          console.log(`Exploration map saved to ${config.exploreOutput}`);
+        }
+
+        // Save journey YAML if requested
+        if (config.exploreJourney) {
+          const yaml = generateJourneyYaml(explorationResult);
+          await fs.writeFile(config.exploreJourney, yaml, 'utf-8');
+          console.log(`Journey file saved to ${config.exploreJourney}`);
+        }
+      } catch (err) {
+        console.error(`Exploration failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    // Programmatic checks on main URL
     const context = await browser.newContext({ locale: 'zh-CN', storageState: storageState || undefined });
     const page = await context.newPage();
     await page.setViewportSize({ width: config.viewports[0].width, height: config.viewports[0].height });
@@ -83,6 +155,51 @@ export async function runAudit(config: AuditConfig): Promise<void> {
 
     await context.close();
 
+    // Run checks on discovered page states
+    if (explorationResult && explorationResult.pageStates.length > 1) {
+      const stateIssues: Record<string, number> = {};
+      console.log(`Running checks on ${explorationResult.pageStates.length - 1} discovered states...`);
+
+      for (const ps of explorationResult.pageStates) {
+        if (ps.url === config.url && ps.interactions.length === 0) continue;
+
+        const stateContext = await browser.newContext({
+          locale: 'zh-CN',
+          storageState: storageState || undefined,
+        });
+        const statePage = await stateContext.newPage();
+        await statePage.setViewportSize({ width: config.viewports[0].width, height: config.viewports[0].height });
+
+        try {
+          await statePage.goto(ps.url, { waitUntil: 'networkidle', timeout: 30000 });
+          await replayInteractions(statePage, ps.interactions);
+
+          const stateResults: CheckResult[] = [];
+          if (!config.noA11y) {
+            stateResults.push(await runAccessibilityCheck(statePage));
+          }
+          if (!config.noLayout) {
+            stateResults.push(await runLayoutCheck(statePage));
+          }
+
+          const issueCount = stateResults.reduce((sum, r) => sum + r.issues.length, 0);
+          if (issueCount > 0) {
+            stateIssues[ps.stateId] = issueCount;
+            results.push(...stateResults);
+          }
+        } catch {
+          // Skip states that fail to load
+        } finally {
+          await stateContext.close();
+        }
+      }
+
+      // Store state issue counts for report
+      if (explorationResult) {
+        (explorationResult as ExplorationResult & { stateIssues?: Record<string, number> }).stateIssues = stateIssues;
+      }
+    }
+
     // Resolve output directory before visual review (screenshots need it)
     const outDir = await resolveOutputDir(config);
     let savedScreenshotDir: string | undefined;
@@ -91,19 +208,38 @@ export async function runAudit(config: AuditConfig): Promise<void> {
     if (config.visual) {
       const screenshotDir = outDir ? path.join(outDir, 'screenshots') : undefined;
       if (!config.modelUrl || !config.modelKey) {
-        console.error('Error: --model-url and --model-key are required when --visual is enabled.');
-        console.error('Set UIUX_AUDIT_MODEL_URL and UIUX_AUDIT_MODEL_KEY environment variables or pass them as options.');
+        console.error('Error: UIUX_AUDIT_MODEL_KEY environment variable is required when --visual is enabled.');
+        console.error('Set it in your shell or .env file. Never pass API keys on the command line.');
         process.exit(1);
       }
 
       console.log('Capturing screenshots...');
+
+      // Build screenshot targets from exploration (deduplicated by URL, capped)
+      let exploreTargets: ScreenshotTarget[] | undefined;
+      if (config.exploreVisual && explorationResult) {
+        const seenUrls = new Set<string>();
+        const maxPages = config.maxVisualPages ?? 10;
+        exploreTargets = [];
+        for (const ps of explorationResult.pageStates) {
+          if (seenUrls.has(ps.url)) continue;
+          seenUrls.add(ps.url);
+          exploreTargets.push({ url: ps.url, label: ps.stateId, interactions: ps.interactions });
+          if (exploreTargets.length >= maxPages) break;
+        }
+        if (exploreTargets.length > 0) {
+          console.log(`Sending ${exploreTargets.length} explored pages to visual review`);
+        }
+      }
+
       const { screenshots, tempDir, persistent } = await captureScreenshots(
         browser,
         config.url,
         config.viewports,
-        auditPages,
+        config.pages,
         screenshotDir,
-        storageState
+        storageState,
+        exploreTargets,
       );
 
       console.log(`Captured ${screenshots.length} screenshots, running visual review...`);
@@ -127,7 +263,19 @@ export async function runAudit(config: AuditConfig): Promise<void> {
     }
 
     // Build and output report
-    const report = buildReport(config.url, results);
+    const explorationMeta = explorationResult ? {
+      pagesDiscovered: explorationResult.stats.pagesDiscovered,
+      statesDiscovered: explorationResult.stats.statesDiscovered,
+      interactionsAttempted: explorationResult.stats.interactionsAttempted,
+      aiDecisionsMade: explorationResult.stats.aiDecisionsMade,
+      durationMs: explorationResult.stats.durationMs,
+      stateIssues: (explorationResult as ExplorationResult & { stateIssues?: Record<string, number> }).stateIssues || {},
+      screenshots: explorationResult.pageStates
+        .filter(ps => ps.screenshot)
+        .map(ps => ({ stateId: ps.stateId, description: ps.description, path: ps.screenshot! })),
+    } : undefined;
+
+    const report = buildReport(config.url, results, explorationMeta);
 
     let output: string;
     switch (config.output) {
