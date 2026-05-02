@@ -141,7 +141,7 @@ export async function cleanupScreenshots(tempDir: string, persistent = false): P
   await fs.rm(tempDir, { recursive: true, force: true });
 }
 
-async function replayInteractions(page: Page, interactions: Interaction[]): Promise<void> {
+export async function replayInteractions(page: Page, interactions: Interaction[]): Promise<void> {
   for (const interaction of interactions) {
     try {
       switch (interaction.type) {

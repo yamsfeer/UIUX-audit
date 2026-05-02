@@ -30,7 +30,8 @@ const LAYOUT_CHECK_SCRIPT = `
             selector: getSelector(el),
             description: 'Text overflows container horizontally',
             evidence: 'scrollWidth=' + el.scrollWidth + ' clientWidth=' + el.clientWidth + ' text="' + text + '"',
-            fixSuggestion: 'Add overflow-x: auto/scroll, or use text-overflow: ellipsis with overflow: hidden and white-space: nowrap, or increase the container width'
+            fixSuggestion: 'Add overflow-x: auto/scroll, or use text-overflow: ellipsis with overflow: hidden and white-space: nowrap, or increase the container width',
+            check: 'layout',
           });
         }
       }
@@ -50,7 +51,8 @@ const LAYOUT_CHECK_SCRIPT = `
             selector: getSelector(el),
             description: 'Content overflows container vertically and is clipped',
             evidence: 'scrollHeight=' + el.scrollHeight + ' clientHeight=' + el.clientHeight + ' text="' + text + '"',
-            fixSuggestion: 'Change overflow-y to auto/scroll, remove the fixed height, or use line-clamp for intentional truncation'
+            fixSuggestion: 'Change overflow-y to auto/scroll, remove the fixed height, or use line-clamp for intentional truncation',
+            check: 'layout',
           });
         }
       }
@@ -68,7 +70,8 @@ const LAYOUT_CHECK_SCRIPT = `
         selector: getSelector(el),
         description: 'Interactive element is smaller than 44px minimum touch target',
         evidence: 'width=' + Math.round(rect.width) + 'px height=' + Math.round(rect.height) + 'px tag=' + el.tagName,
-        fixSuggestion: 'Increase the element size to at least 44x44px, or add padding/min-width/min-height, or use a larger click target area with an invisible hit region'
+        fixSuggestion: 'Increase the element size to at least 44x44px, or add padding/min-width/min-height, or use a larger click target area with an invisible hit region',
+        check: 'layout',
       });
     }
   }
@@ -86,7 +89,8 @@ const LAYOUT_CHECK_SCRIPT = `
           selector: getSelector(el),
           description: 'Element is positioned outside the viewport',
           evidence: 'rect=' + Math.round(rect.left) + ',' + Math.round(rect.top) + ',' + Math.round(rect.right) + ',' + Math.round(rect.bottom) + ' viewport=' + window.innerWidth + 'x' + window.innerHeight,
-          fixSuggestion: 'Fix the element positioning so it is visible within the viewport; check for negative margins, transforms, or incorrect positioning values'
+          fixSuggestion: 'Fix the element positioning so it is visible within the viewport; check for negative margins, transforms, or incorrect positioning values',
+          check: 'layout',
         });
       }
     }
@@ -103,14 +107,16 @@ const LAYOUT_CHECK_SCRIPT = `
         selector: getSelector(el),
         description: 'Image missing explicit width/height (may cause layout shift)',
         evidence: 'src=' + (el.getAttribute('src') || '').slice(0, 80),
-        fixSuggestion: 'Add width and height attributes (or CSS) to the <img> element to prevent Cumulative Layout Shift (CLS)'
+        fixSuggestion: 'Add width and height attributes (or CSS) to the <img> element to prevent Cumulative Layout Shift (CLS)',
+        check: 'layout',
       });
     }
   }
 
-  // 6. Zero-size elements with text content
+  // 6. Zero-size elements with text content (skip single-char symbols like ●○✗)
   for (const el of document.querySelectorAll('*')) {
-    if (el.clientWidth === 0 && el.clientHeight === 0 && el.textContent?.trim()) {
+    const text = el.textContent?.trim();
+    if (el.clientWidth === 0 && el.clientHeight === 0 && text && text.length > 2) {
       const style = getComputedStyle(el);
       if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
         issues.push({
@@ -118,8 +124,9 @@ const LAYOUT_CHECK_SCRIPT = `
           severity: 'critical',
           selector: getSelector(el),
           description: 'Element has text content but zero visible dimensions',
-          evidence: 'text="' + el.textContent.trim().slice(0, 60) + '" display=' + style.display,
-          fixSuggestion: 'The element has text but renders at zero size; check for conflicting CSS (e.g. height:0, overflow:hidden on a flex child) or add explicit dimensions'
+          evidence: 'text="' + text.slice(0, 60) + '" display=' + style.display,
+          fixSuggestion: 'The element has text but renders at zero size; check for conflicting CSS (e.g. height:0, overflow:hidden on a flex child) or add explicit dimensions',
+          check: 'layout',
         });
       }
     }
@@ -157,7 +164,8 @@ const LAYOUT_CHECK_SCRIPT = `
             selector: a.selector,
             description: 'Element overlaps with ' + b.selector,
             evidence: 'overlap=' + Math.round(overlapArea) + 'px² elementA=' + Math.round(ra.width) + 'x' + Math.round(ra.height) + ' elementB=' + Math.round(rb.width) + 'x' + Math.round(rb.height),
-            fixSuggestion: 'Adjust margins, padding, or positioning to prevent overlap; consider using flexbox/grid gap for consistent spacing'
+            fixSuggestion: 'Adjust margins, padding, or positioning to prevent overlap; consider using flexbox/grid gap for consistent spacing',
+          check: 'layout',
           });
           break;
         }

@@ -3,14 +3,14 @@ import { AuditConfig, CheckResult } from './checks/types.js';
 import { StorageState } from './journey/types.js';
 import { runAccessibilityCheck } from './checks/accessibility.js';
 import { runLayoutCheck } from './checks/layout.js';
-import { captureScreenshots, cleanupScreenshots, ScreenshotTarget } from './visual/screenshot.js';
+import { captureScreenshots, cleanupScreenshots, ScreenshotTarget, replayInteractions } from './visual/screenshot.js';
 import { runVisualReview } from './visual/reviewer.js';
 import { loadDesignSpec } from './visual/design-spec.js';
 import { buildReport, formatJson, formatMarkdown, formatTable } from './report/formatter.js';
 import { runJourney } from './journey/runner.js';
 import { runExplorer } from './explore/runner.js';
 import { exportSiteMapJson, generateJourneyYaml } from './explore/site-map.js';
-import { ExplorationResult, Interaction } from './explore/types.js';
+import { ExplorationResult } from './explore/types.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -30,33 +30,6 @@ async function resolveOutputDir(config: AuditConfig): Promise<string | undefined
 
   await fs.mkdir(config.outputDir, { recursive: true });
   return config.outputDir;
-}
-
-async function replayInteractions(page: import('playwright').Page, interactions: Interaction[]): Promise<void> {
-  for (const interaction of interactions) {
-    try {
-      switch (interaction.type) {
-        case 'navigate':
-          await page.goto(interaction.selector, { waitUntil: 'networkidle', timeout: 15000 });
-          break;
-        case 'click':
-        case 'toggle-state':
-          await page.click(interaction.selector, { timeout: 5000 });
-          break;
-        case 'fill-input':
-          if (interaction.value) {
-            await page.fill(interaction.selector, interaction.value, { timeout: 5000 });
-          }
-          break;
-        case 'submit-form':
-          await page.click(interaction.selector, { timeout: 5000 });
-          break;
-      }
-      await page.waitForTimeout(300);
-    } catch {
-      // Skip failed interactions
-    }
-  }
 }
 
 export async function runAudit(config: AuditConfig): Promise<void> {
@@ -92,6 +65,7 @@ export async function runAudit(config: AuditConfig): Promise<void> {
       } catch (err) {
         console.error(`Journey failed: ${err instanceof Error ? err.message : err}`);
         console.error('Cannot proceed with audit — session state is invalid.');
+        if (browser) await browser.close();
         process.exit(1);
       }
     }
@@ -209,6 +183,7 @@ export async function runAudit(config: AuditConfig): Promise<void> {
       if (!config.modelUrl || !config.modelKey) {
         console.error('Error: UIUX_AUDIT_MODEL_KEY environment variable is required when --visual is enabled.');
         console.error('Set it in your shell or .env file. Never pass API keys on the command line.');
+        if (browser) await browser.close();
         process.exit(1);
       }
 
@@ -235,7 +210,7 @@ export async function runAudit(config: AuditConfig): Promise<void> {
         browser,
         config.url,
         config.viewports,
-        config.pages,
+        auditPages,
         screenshotDir,
         storageState,
         exploreTargets,
