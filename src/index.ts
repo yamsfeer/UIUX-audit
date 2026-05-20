@@ -36,6 +36,7 @@ program
   .option('--no-layout', 'Skip layout checks')
   .option('--pages <urls>', 'Additional page URLs to audit (comma-separated)')
   .option('--journey <path>', 'Path to a journey file (YAML or JS) for login/setup before auditing')
+  .option('--flow <path>', 'Path to a flow file (YAML or JS) for business-flow auditing with checkpoints')
   .option('--explore', 'Enable autonomous site exploration to discover pages and states')
   .option('--no-explore-ai', 'Disable AI guidance for exploration (DOM-only mode, no API cost)')
   .option('--max-pages <n>', 'Max pages to discover during exploration (default: 30)', parseInt)
@@ -81,6 +82,12 @@ Examples:
   $ uiux-audit http://localhost:5173 --pages /about,/contact
     Audit multiple pages
 
+  $ uiux-audit http://localhost:5173 --flow checkout-flow.yaml
+    Audit a business flow with checkpoints
+
+  $ uiux-audit http://localhost:5173 --journey login.yaml --flow checkout-flow.yaml
+    Login first, then audit a business flow
+
 Environment variables:
   UIUX_AUDIT_MODEL_KEY    Vision model API key (required for --visual; never pass on command line)
   UIUX_AUDIT_MODEL_URL    Vision model API base URL (default: https://ark.cn-beijing.volces.com/api/coding/v3)
@@ -112,6 +119,7 @@ AI Agent workflow:
         outputDir: options.outputDir,
         timestamp: options.timestamp ?? true,
         journey: options.journey,
+        flow: options.flow,
         explore: options.explore ?? false,
         exploreConfig: options.explore ? {
           maxPages: options.maxPages,

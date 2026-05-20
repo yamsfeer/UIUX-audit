@@ -1,0 +1,21 @@
+name: Checkout flow
+
+setup:
+  journey: ./login.yaml
+
+steps:
+  - goto: /products
+    checkpoint: true
+    label: Product listing
+  - click: .product-card:first-child
+    checkpoint: true
+    label: Product detail page
+  - click: button.add-to-cart
+    checkpoint: true
+    label: Item added to cart
+  - goto: /cart
+    checkpoint: true
+    label: Cart review
+  - click: button.place-order
+    checkpoint: true
+    label: Order confirmation

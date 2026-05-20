@@ -3,6 +3,7 @@ import { ViewportConfig, ScreenshotInfo } from '../checks/types.js';
 import { StorageState } from '../journey/types.js';
 import { Interaction } from '../explore/types.js';
 import { resolveUrl } from '../config.js';
+import { gotoPage } from '../navigate.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -53,7 +54,7 @@ export async function captureScreenshots(
     const resolvedUrl = resolveUrl(url, pageUrl);
     for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto(resolvedUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      await gotoPage(page, resolvedUrl);
       await page.waitForTimeout(500);
 
       // Viewport screenshot
@@ -78,7 +79,7 @@ export async function captureScreenshots(
       const resolvedUrl = resolveUrl(url, target.url);
       for (const viewport of viewports) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await page.goto(resolvedUrl, { waitUntil: 'networkidle', timeout: 30000 });
+        await gotoPage(page, resolvedUrl);
         await page.waitForTimeout(500);
 
         if (target.interactions && target.interactions.length > 0) {
@@ -146,7 +147,7 @@ export async function replayInteractions(page: Page, interactions: Interaction[]
     try {
       switch (interaction.type) {
         case 'navigate':
-          await page.goto(interaction.selector, { waitUntil: 'networkidle', timeout: 15000 });
+          await gotoPage(page, interaction.selector, { timeout: 15000 });
           break;
         case 'click':
         case 'toggle-state':

@@ -11,6 +11,7 @@ export interface Issue {
   check: CheckSource;
   fixSuggestion?: string;
   deviation?: string;
+  checkpoint?: string;
 }
 
 export interface CheckResult {
@@ -38,6 +39,11 @@ export interface AuditReport {
     durationMs: number;
     stateIssues: Record<string, number>;
     screenshots: Array<{ stateId: string; description: string; path: string }>;
+  };
+  flow?: {
+    name: string;
+    checkpoints: Array<{ stepIndex: number; label: string; url: string; issueCount: number; screenshot?: string }>;
+    totalDurationMs: number;
   };
 }
 
@@ -70,6 +76,7 @@ export interface AuditConfig {
   outputDir?: string;
   timestamp: boolean;
   journey?: string;
+  flow?: string;
   explore?: boolean;
   exploreConfig?: import('../explore/types.js').ExplorationConfig;
   exploreOutput?: string;

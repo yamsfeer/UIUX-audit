@@ -11,6 +11,9 @@ import { runJourney } from './journey/runner.js';
 import { runExplorer } from './explore/runner.js';
 import { exportSiteMapJson, generateJourneyYaml } from './explore/site-map.js';
 import { ExplorationResult } from './explore/types.js';
+import { runFlow } from './flow/runner.js';
+import { FlowResult } from './flow/types.js';
+import { gotoPage } from './navigate.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -41,6 +44,7 @@ export async function runAudit(config: AuditConfig): Promise<void> {
     let storageState: StorageState | undefined;
     let auditPages = config.pages;
     let explorationResult: ExplorationResult | undefined;
+    let flowResult: FlowResult | undefined;
 
     // Run journey if provided
     if (config.journey) {
@@ -70,9 +74,48 @@ export async function runAudit(config: AuditConfig): Promise<void> {
       }
     }
 
-    // Resolve output directory early so explorer and report share the same timestamped subdir
+    // Resolve output directory early so flow, explorer and report share the same timestamped subdir
     const outDir = await resolveOutputDir(config);
     let savedScreenshotDir: string | undefined;
+
+    // Run flow if provided
+    if (config.flow) {
+      try {
+        flowResult = await runFlow(browser, config.flow, config.url, {
+          storageState,
+          viewports: config.viewports,
+          noA11y: config.noA11y,
+          noLayout: config.noLayout,
+          visual: config.visual,
+          modelUrl: config.modelUrl,
+          modelKey: config.modelKey,
+          modelName: config.modelName,
+          outputDir: outDir,
+        });
+
+        // Use flow's storageState for subsequent operations
+        storageState = flowResult.storageState;
+
+        // Push checkpoint results into main results
+        for (const cp of flowResult.checkpointResults) {
+          results.push(...cp.results);
+        }
+
+        // Merge flow-visited URLs into audit pages
+        const existing = new Set(auditPages ?? []);
+        const merged = [...(auditPages ?? [])];
+        for (const p of flowResult.visitedUrls) {
+          if (!existing.has(p)) {
+            merged.push(p);
+          }
+        }
+        auditPages = merged;
+      } catch (err) {
+        console.error(`Flow failed: ${err instanceof Error ? err.message : err}`);
+        if (browser) await browser.close();
+        process.exit(1);
+      }
+    }
 
     // Run explorer if enabled
     if (config.explore) {
@@ -80,7 +123,7 @@ export async function runAudit(config: AuditConfig): Promise<void> {
         explorationResult = await runExplorer({
           ...config,
           storageState,
-        }, browser, outDir);
+        }, browser, outDir, flowResult?.visitedUrls);
 
         // Merge discovered pages into audit scope
         const discoveredUrls = explorationResult.pageStates.map(ps => ps.url);
@@ -114,23 +157,38 @@ export async function runAudit(config: AuditConfig): Promise<void> {
       }
     }
 
-    // Programmatic checks on main URL
-    const context = await browser.newContext({ locale: 'zh-CN', storageState: storageState || undefined });
-    const page = await context.newPage();
-    await page.setViewportSize({ width: config.viewports[0].width, height: config.viewports[0].height });
-    await page.goto(config.url, { waitUntil: 'networkidle', timeout: 30000 });
+    // Programmatic checks on main URL (skip if flow already covered it)
+    if (!flowResult) {
+      const context = await browser.newContext({ locale: 'zh-CN', storageState: storageState || undefined });
+      const page = await context.newPage();
+      await page.setViewportSize({ width: config.viewports[0].width, height: config.viewports[0].height });
+      await gotoPage(page, config.url);
 
-    if (!config.noA11y) {
-      console.log('Running accessibility check...');
-      results.push(await runAccessibilityCheck(page));
+      if (!config.noA11y) {
+        console.log('Running accessibility check...');
+        results.push(await runAccessibilityCheck(page));
+      }
+
+      if (!config.noLayout) {
+        console.log('Running layout check...');
+        results.push(await runLayoutCheck(page));
+      }
+
+      // Always capture a screenshot of the main page
+      if (outDir) {
+        const mainScreenshotDir = path.join(outDir, 'screenshots');
+        await fs.mkdir(mainScreenshotDir, { recursive: true });
+        const mainIssues = results.reduce((sum, r) => sum + r.issues.length, 0);
+        const mainCritical = results.reduce((sum, r) => sum + r.issues.filter(i => i.severity === 'critical').length, 0);
+        const mainWarning = results.reduce((sum, r) => sum + r.issues.filter(i => i.severity === 'warning').length, 0);
+        const mainFile = path.join(mainScreenshotDir, `00-home--${mainCritical}C-${mainWarning}W.png`);
+        await page.screenshot({ path: mainFile, fullPage: true }).catch(() => {});
+        console.log(`Screenshot: screenshots/00-home--${mainCritical}C-${mainWarning}W.png`);
+        savedScreenshotDir = mainScreenshotDir;
+      }
+
+      await context.close();
     }
-
-    if (!config.noLayout) {
-      console.log('Running layout check...');
-      results.push(await runLayoutCheck(page));
-    }
-
-    await context.close();
 
     // Run checks on discovered page states
     if (explorationResult && explorationResult.pageStates.length > 1) {
@@ -148,7 +206,7 @@ export async function runAudit(config: AuditConfig): Promise<void> {
         await statePage.setViewportSize({ width: config.viewports[0].width, height: config.viewports[0].height });
 
         try {
-          await statePage.goto(ps.url, { waitUntil: 'networkidle', timeout: 30000 });
+          await gotoPage(statePage, ps.url);
           await replayInteractions(statePage, ps.interactions);
 
           const stateResults: CheckResult[] = [];
@@ -206,6 +264,23 @@ export async function runAudit(config: AuditConfig): Promise<void> {
         }
       }
 
+      // Build screenshot targets from flow checkpoints
+      let flowTargets: ScreenshotTarget[] | undefined;
+      if (flowResult && flowResult.checkpointResults.length > 0) {
+        flowTargets = flowResult.checkpointResults.map(cp => ({
+          url: cp.url,
+          label: `flow-${cp.label}`,
+        }));
+        if (flowTargets.length > 0) {
+          console.log(`Sending ${flowTargets.length} flow checkpoints to visual review`);
+        }
+      }
+
+      const allTargets: ScreenshotTarget[] = [
+        ...(exploreTargets ?? []),
+        ...(flowTargets ?? []),
+      ];
+
       const { screenshots, tempDir, persistent } = await captureScreenshots(
         browser,
         config.url,
@@ -213,7 +288,7 @@ export async function runAudit(config: AuditConfig): Promise<void> {
         auditPages,
         screenshotDir,
         storageState,
-        exploreTargets,
+        allTargets.length > 0 ? allTargets : undefined,
       );
 
       console.log(`Captured ${screenshots.length} screenshots, running visual review...`);
@@ -249,7 +324,19 @@ export async function runAudit(config: AuditConfig): Promise<void> {
         .map(ps => ({ stateId: ps.stateId, description: ps.description, path: ps.screenshot! })),
     } : undefined;
 
-    const report = buildReport(config.url, results, explorationMeta);
+    const flowMeta = flowResult ? {
+      name: flowResult.name,
+      checkpoints: flowResult.checkpointResults.map(cp => ({
+        stepIndex: cp.stepIndex,
+        label: cp.label,
+        url: cp.url,
+        issueCount: cp.results.reduce((sum, r) => sum + r.issues.length, 0),
+        screenshot: cp.screenshotPath,
+      })),
+      totalDurationMs: flowResult.durationMs,
+    } : undefined;
+
+    const report = buildReport(config.url, results, explorationMeta, flowMeta);
 
     let output: string;
     switch (config.output) {

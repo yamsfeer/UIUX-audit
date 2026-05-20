@@ -33,7 +33,7 @@ export async function executeSteps(
   }
 }
 
-function getStepType(step: JourneyStep): string {
+export function getStepType(step: JourneyStep): string {
   if ('goto' in step) return 'goto';
   if ('fill' in step) return 'fill';
   if ('click' in step) return 'click';
@@ -68,7 +68,7 @@ function logStep(index: number, step: JourneyStep, stepType: string): void {
   }
 }
 
-async function executeStep(
+export async function executeStep(
   page: Page,
   step: JourneyStep,
   baseUrl: string,

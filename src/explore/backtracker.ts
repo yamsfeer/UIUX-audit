@@ -1,5 +1,6 @@
 import { Page } from 'playwright';
 import { PageSnapshot } from './types.js';
+import { goBack, gotoPage } from '../navigate.js';
 
 export class BacktrackError extends Error {
   constructor(message: string) {
@@ -21,7 +22,7 @@ export async function restoreFromSnapshot(page: Page, snapshot: PageSnapshot): P
 
   if (currentUrl !== snapshot.url) {
     try {
-      await page.goBack({ waitUntil: 'networkidle', timeout: 10000 });
+      await goBack(page);
       if (page.url() === snapshot.url) {
         return;
       }
@@ -30,7 +31,7 @@ export async function restoreFromSnapshot(page: Page, snapshot: PageSnapshot): P
 
   if (page.url() !== snapshot.url) {
     try {
-      await page.goto(snapshot.url, { waitUntil: 'networkidle', timeout: 15000 });
+      await gotoPage(page, snapshot.url, { timeout: 15000 });
     } catch {
       throw new BacktrackError(`Failed to restore to ${snapshot.url}`);
     }

@@ -1,9 +1,9 @@
 import yaml from 'js-yaml';
 import { JourneyConfig, JourneyStep } from './types.js';
 
-const ENV_VAR_RE = /\$\{([^}]+)\}/g;
+export const ENV_VAR_RE = /\$\{([^}]+)\}/g;
 
-function interpolateEnvVars(value: unknown, stepIndex: number): unknown {
+export function interpolateEnvVars(value: unknown, stepIndex: number): unknown {
   if (typeof value === 'string') {
     return value.replace(ENV_VAR_RE, (match, varName) => {
       const envValue = process.env[varName];
@@ -29,13 +29,13 @@ function interpolateEnvVars(value: unknown, stepIndex: number): unknown {
   return value;
 }
 
-const KNOWN_STEP_TYPES = new Set([
+export const KNOWN_STEP_TYPES = new Set([
   'goto', 'fill', 'click', 'press', 'select',
   'check', 'uncheck', 'wait', 'waitFor',
   'waitForNavigation', 'assert', 'screenshot',
 ]);
 
-function validateSteps(raw: unknown[]): JourneyStep[] {
+export function validateSteps(raw: unknown[]): JourneyStep[] {
   return raw.map((step, i) => {
     if (typeof step !== 'object' || step === null) {
       throw new Error(`Journey step ${i} must be an object, got ${typeof step}`);

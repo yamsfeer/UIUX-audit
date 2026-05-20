@@ -11,6 +11,7 @@ export async function runExplorer(
   config: AuditConfig & { storageState?: StorageState },
   browser: Browser,
   outputDir?: string,
+  knownUrls?: string[],
 ): Promise<ExplorationResult> {
   const exploreConfig: ExplorationConfig = {
     ...DEFAULT_EXPLORATION_CONFIG,
@@ -33,11 +34,13 @@ export async function runExplorer(
     await fs.mkdir(screenshotDir, { recursive: true });
   }
 
+  const knownUrlSet = knownUrls ? new Set(knownUrls) : undefined;
+
   const explorer = new Explorer(exploreConfig, browser, config.storageState, {
     modelUrl: config.modelUrl,
     modelKey: config.modelKey,
     modelName,
-  }, screenshotDir);
+  }, screenshotDir, knownUrlSet);
 
   console.log(`Exploring ${config.url}...`);
   if (exploreConfig.aiGuided) {

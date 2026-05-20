@@ -1,0 +1,6 @@
+name: Browse products
+
+steps:
+  - goto: /products
+  - click: .product-card:first-child
+  - click: button.add-to-cart

@@ -1,6 +1,6 @@
 import { AuditReport, CheckResult, Issue, Severity } from '../checks/types.js';
 
-export function buildReport(url: string, results: CheckResult[], exploration?: AuditReport['exploration']): AuditReport {
+export function buildReport(url: string, results: CheckResult[], exploration?: AuditReport['exploration'], flow?: AuditReport['flow']): AuditReport {
   const allIssues = results.flatMap((r) => r.issues);
   return {
     url,
@@ -18,6 +18,7 @@ export function buildReport(url: string, results: CheckResult[], exploration?: A
       },
     },
     exploration,
+    flow,
   };
 }
 
@@ -66,6 +67,24 @@ export function formatMarkdown(report: AuditReport): string {
     lines.push('');
   }
 
+  if (report.flow) {
+    const totalIssues = report.flow.checkpoints.reduce((sum, cp) => sum + cp.issueCount, 0);
+    lines.push(`## Flow: ${report.flow.name} (${(report.flow.totalDurationMs / 1000).toFixed(1)}s)`);
+    lines.push('');
+    lines.push(`| Checkpoint | URL | Issues | Screenshot |`);
+    lines.push(`|---|---|---|---|`);
+    for (const cp of report.flow.checkpoints) {
+      const urlPath = tryFormatUrl(cp.url);
+      const screenshotRef = cp.screenshot ? `![${cp.label}](${cp.screenshot})` : '-';
+      lines.push(`| ${cp.label} | ${urlPath} | ${cp.issueCount} | ${screenshotRef} |`);
+    }
+    lines.push('');
+    if (totalIssues > 0) {
+      lines.push(`Total: ${totalIssues} issues across ${report.flow.checkpoints.length} checkpoints`);
+      lines.push('');
+    }
+  }
+
   for (const result of report.results) {
     if (result.issues.length === 0) continue;
     lines.push(`## ${result.check} (${result.issues.length} issues, ${result.duration}ms)`);
@@ -75,6 +94,9 @@ export function formatMarkdown(report: AuditReport): string {
     for (const issue of sorted) {
       const badge = severityBadge(issue.severity);
       lines.push(`### ${badge} ${issue.type}`);
+      if (issue.checkpoint) {
+        lines.push(`- **Checkpoint**: ${issue.checkpoint}`);
+      }
       lines.push(`- **Selector**: \`${issue.selector}\``);
       lines.push(`- **Description**: ${issue.description}`);
       lines.push(`- **Evidence**: ${issue.evidence}`);
@@ -128,6 +150,11 @@ export function formatTable(report: AuditReport): string {
   }
 
   lines.push('');
+  if (report.flow) {
+    const totalIssues = report.flow.checkpoints.reduce((sum, cp) => sum + cp.issueCount, 0);
+    lines.push(`Flow: ${report.flow.name} - ${report.flow.checkpoints.length} checkpoints, ${totalIssues} issues (${(report.flow.totalDurationMs / 1000).toFixed(1)}s)`);
+    lines.push('');
+  }
   if (report.exploration) {
     const shotCount = report.exploration.screenshots?.length ?? 0;
     lines.push(`Exploration: ${report.exploration.pagesDiscovered} pages, ${report.exploration.statesDiscovered} states, ${report.exploration.interactionsAttempted} interactions`);
@@ -161,4 +188,13 @@ function pad(s: string | undefined, len: number): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + '…';
+}
+
+function tryFormatUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname + parsed.search;
+  } catch {
+    return url;
+  }
 }

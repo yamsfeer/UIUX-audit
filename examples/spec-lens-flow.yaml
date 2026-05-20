@@ -1,0 +1,21 @@
+name: Spec Lens page navigation
+
+steps:
+  - goto: /doc
+    checkpoint: true
+    label: Doc page (default)
+  - goto: /erd
+    checkpoint: true
+    label: ERD page
+  - goto: /api
+    checkpoint: true
+    label: API page
+  - goto: /design-tokens
+    checkpoint: true
+    label: Design tokens page
+  - goto: /state-machines
+    checkpoint: true
+    label: State machines page
+  - goto: /graph
+    checkpoint: true
+    label: Graph page

@@ -17,6 +17,7 @@ import { extractLinks, extractInteractions, extractPageMetadata } from './dom-ex
 import { computeDomHash, computeLayoutHash, computeStateId, StateRegistry, LayoutRegistry } from './dedup.js';
 import { buildSiteMap } from './site-map.js';
 import { AIGuide } from './ai-guide.js';
+import { gotoPage, goBack } from '../navigate.js';
 
 interface ModelConfig {
   modelUrl?: string;
@@ -32,13 +33,15 @@ export class Explorer {
   private aiGuide?: AIGuide;
   private screenshotDir?: string;
   private screenshotIndex = 0;
+  private knownUrls?: Set<string>;
 
-  constructor(config: ExplorationConfig, browser: Browser, storageState?: StorageState, modelConfig?: ModelConfig, screenshotDir?: string) {
+  constructor(config: ExplorationConfig, browser: Browser, storageState?: StorageState, modelConfig?: ModelConfig, screenshotDir?: string, knownUrls?: Set<string>) {
     this.config = config;
     this.browser = browser;
     this.storageState = storageState;
     this.registry = new StateRegistry();
     this.screenshotDir = screenshotDir;
+    this.knownUrls = knownUrls;
 
     if (config.aiGuided && modelConfig?.modelUrl && modelConfig?.modelKey) {
       this.aiGuide = new AIGuide(modelConfig);
@@ -57,7 +60,7 @@ export class Explorer {
 
     const results: PageState[] = [];
     const queue: ExplorationTarget[] = [{ type: 'navigate', url: startUrl, depth: 0 }];
-    const visitedUrls = new Set<string>();
+    const visitedUrls = new Set<string>(this.knownUrls ?? []);
     const layoutRegistry = new LayoutRegistry(this.config.maxSameLayout);
 
     while (queue.length > 0) {
@@ -76,7 +79,7 @@ export class Explorer {
 
       try {
         // Navigate to the target URL
-        await page.goto(target.url, { waitUntil: 'networkidle', timeout: 30000 });
+        await gotoPage(page, target.url);
         await page.waitForTimeout(500);
 
         // If this is an interact target, replay the interaction to reach the new state
@@ -218,17 +221,17 @@ export class Explorer {
       // Always restore the original state
       try {
         if (page.url() !== snapshot.url) {
-          await page.goBack({ waitUntil: 'networkidle', timeout: 10000 }).catch(() => {});
+          await goBack(page);
         }
         if (page.url() !== snapshot.url) {
-          await page.goto(snapshot.url, { waitUntil: 'networkidle', timeout: 15000 }).catch(() => {});
+          await gotoPage(page, snapshot.url, { timeout: 15000 });
         }
         // Press Escape to dismiss any overlays
         await page.keyboard.press('Escape').catch(() => {});
         await page.waitForTimeout(200);
         // Re-navigate if still on wrong page
         if (page.url() !== snapshot.url) {
-          await page.goto(snapshot.url, { waitUntil: 'networkidle', timeout: 15000 }).catch(() => {});
+          await gotoPage(page, snapshot.url, { timeout: 15000 });
         }
       } catch {}
     }
@@ -282,7 +285,7 @@ export class Explorer {
     switch (interaction.type) {
       case 'navigate':
         if (interaction.href) {
-          await page.goto(interaction.href, { waitUntil: 'networkidle', timeout: 15000 });
+          await gotoPage(page, interaction.href, { timeout: 15000 });
         }
         break;
       case 'click':

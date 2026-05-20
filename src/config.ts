@@ -21,6 +21,7 @@ export function createConfig(options: Partial<AuditConfig> & { url: string }): A
     outputDir: options.outputDir,
     timestamp: options.timestamp ?? true,
     journey: options.journey,
+    flow: options.flow,
     explore: options.explore ?? false,
     exploreConfig: options.exploreConfig,
     exploreOutput: options.exploreOutput,
